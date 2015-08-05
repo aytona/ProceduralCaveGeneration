@@ -1,16 +1,157 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 public class MeshGenerator : MonoBehaviour {
 
 	public SquareGrid squareGrid;
+    List<Vector3> vertices;
+    List<int> triangles;
 
 	public void GenerateMesh(int[,] map, float squareSize)
 	{
 		squareGrid = new SquareGrid(map, squareSize);
+        vertices = new List<Vector3>();
+        triangles = new List<int>();
+
+        for (int x = 0; x < squareGrid.squares.GetLength(0); x++)
+        {
+            for (int y = 0; y < squareGrid.squares.GetLength(1); y++)
+            {
+                TriangulateSquare(squareGrid.squares[x, y]);
+            }
+        }
+
+        Mesh mesh = new Mesh();
+        GetComponent<MeshFilter>().mesh = mesh;
+
+        mesh.vertices = vertices.ToArray();
+        mesh.triangles = triangles.ToArray();
+        mesh.RecalculateNormals();
 	}
 
-	void OnDrawGizmos()
+    void TriangulateSquare(Square square)
+    {
+        switch (square.configuration)
+        {
+            // 0 Points
+            // 0000
+            case 0:
+                break;
+
+            // 1 Point
+            // 0001
+            case 1:
+                MeshFromPoints(square.centreBottom, square.bottomLeft, square.centreLeft);
+                break;
+            // 0010
+            case 2:
+                MeshFromPoints(square.centreRight, square.bottomRight, square.centreBottom);
+                break;
+            // 0100
+            case 4:
+                MeshFromPoints(square.centreTop, square.topRight, square.centreRight);
+                break;
+            // 1000
+            case 8:
+                MeshFromPoints(square.topLeft, square.centreTop, square.centreLeft);
+                break;
+
+            // 2 Points
+            // 0011
+            case 3:
+                MeshFromPoints(square.centreRight, square.bottomRight, square.bottomLeft, square.centreLeft);
+                break;
+            // 0110
+            case 6:
+                MeshFromPoints(square.centreTop, square.topRight, square.bottomRight, square.centreBottom);
+                break;
+            // 1001
+            case 9:
+                MeshFromPoints(square.topLeft, square.centreTop, square.centreBottom, square.bottomLeft);
+                break;
+            // 1100
+            case 12:
+                MeshFromPoints(square.topLeft, square.topRight, square.centreRight, square.centreLeft);
+                break;
+            // 0101
+            case 5:
+                MeshFromPoints(square.centreTop, square.topRight, square.centreRight, square.centreBottom, square.bottomLeft, square.centreLeft);
+                break;
+            // 1010
+            case 10:
+                MeshFromPoints(square.topLeft, square.centreTop, square.centreRight, square.bottomRight, square.centreBottom, square.centreLeft);
+                break;
+
+            // 3 Points
+            // 0111
+            case 7:
+                MeshFromPoints(square.centreTop, square.topRight, square.bottomRight, square.bottomLeft, square.centreLeft);
+                break;
+            // 1011
+            case 11:
+                MeshFromPoints(square.topLeft, square.centreTop, square.centreRight, square.bottomRight, square.bottomLeft);
+                break;
+            // 1101
+            case 13:
+                MeshFromPoints(square.topLeft, square.topRight, square.centreRight, square.centreBottom, square.bottomLeft);
+                break;
+            // 1110
+            case 14:
+                MeshFromPoints(square.topLeft, square.topRight, square.bottomRight, square.centreBottom, square.centreLeft);
+                break;
+
+            // 4 Points
+            // 1111
+            case 15:
+                MeshFromPoints(square.topLeft, square.topRight, square.bottomRight, square.bottomLeft);
+                break;
+        }
+    }
+
+    void MeshFromPoints(params Node[] points)
+    {
+        AssignVertices(points);
+
+        if (points.Length >= 3)
+        {
+            CreateTriangle(points[0], points[1], points[2]);
+        }
+        if (points.Length >= 4)
+        {
+            CreateTriangle(points[0], points[2], points[3]);
+        }
+        if (points.Length >= 5)
+        {
+            CreateTriangle(points[0], points[3], points[4]);
+        }
+        if (points.Length >= 6)
+        {
+            CreateTriangle(points[0], points[4], points[5]);
+        }
+    }
+
+    void AssignVertices(Node[] points)
+    {
+        for (int i = 0; i < points.Length; i++)
+        {
+            // If the point hasn't been assigned
+            if (points[i].vertexIndex == -1)
+            {
+                points[i].vertexIndex = vertices.Count;
+                vertices.Add(points[i].position);
+            }
+        }
+    }
+
+    void CreateTriangle(Node a, Node b, Node c)
+    {
+        triangles.Add(a.vertexIndex);
+        triangles.Add(b.vertexIndex);
+        triangles.Add(c.vertexIndex);
+    }
+
+	/*void OnDrawGizmos()
 	{
 		if (squareGrid != null)
 		{
@@ -38,7 +179,7 @@ public class MeshGenerator : MonoBehaviour {
 				}
 			}
 		}
-	}
+	}*/
 
 	// Holds 2D array of squares
 	public class SquareGrid
@@ -82,9 +223,10 @@ public class MeshGenerator : MonoBehaviour {
 	{
 		public ControlNode topLeft, topRight, bottomRight, bottomLeft;		// Reference to all corners of the nodes
 		public Node centreTop, centreRight, centreBottom, centreLeft;		// Reference to the mid-point nodes
+        public int configuration;                                           // 16 Ways to turn the nodes on/off
 
 		// Constructor
-		public Square (ControlNode _topLeft, ControlNode _topRight, ControlNode _bottomLeft, ControlNode _bottomRight)
+		public Square (ControlNode _topLeft, ControlNode _topRight, ControlNode _bottomRight, ControlNode _bottomLeft)
 		{
 			topLeft = _topLeft;
 			topRight = _topRight;
@@ -95,6 +237,24 @@ public class MeshGenerator : MonoBehaviour {
 			centreRight = bottomRight.above;
 			centreBottom = bottomLeft.right;
 			centreLeft = bottomLeft.above;
+
+            // Check to see if the nodes are active
+            if (topLeft.active)
+            {
+                configuration += 8;     // 1000 = 8
+            }
+            if (topRight.active)
+            {
+                configuration += 4;     // 0100 = 4
+            }
+            if (bottomRight.active)
+            {
+                configuration += 2;     // 0010 = 2
+            }
+            if (bottomLeft.active)
+            {
+                configuration += 1;     // 0001 = 1
+            }
 		}
 	}
 
